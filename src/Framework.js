@@ -51,10 +51,22 @@ export function useState(initialState) {
   const parent = globalParent;
   globalId++;
 
-  return [
-    initialState,
-    (newValue) => {
-      console.log("Trying to update state to:", newValue);
-    },
-  ];
+  const state = componentState.get(parent) || { cache: [] };
+  componentState.set(parent, state);
+
+  if (state.cache[id] == null) {
+    state.cache[id] = {
+      value: typeof initialState === "function" ? initialState() : initialState,
+    };
+  }
+
+  const setState = (newValue) => {
+    const state = componentState.get(parent);
+    if (!state) return;
+
+    state.cache[id].value = newValue;
+    console.log("State updated to:", state.cache[id].value);
+  };
+
+  return [state.cache[id].value, setState];
 }
