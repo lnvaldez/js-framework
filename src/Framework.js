@@ -1,3 +1,9 @@
+let globalId = 0;
+let globalParent;
+const componentState = new Map();
+
+export function useState(initialState) {}
+
 export function createElement(type, props, ...children) {
   return {
     type,
