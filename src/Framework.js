@@ -19,8 +19,21 @@ export function render(element, container) {
   }
 
   if (typeof element.type === "function") {
-    const component = element.type(element.props);
-    render(component, container);
+    const state = componentState.get(container) || { cache: [] };
+    componentState.set(container, {
+      ...state,
+      component: element,
+      props: element.props,
+    });
+    globalParent = container;
+
+    const currentGlobalId = globalId;
+    globalId = 0;
+    const output = element.type(element.props);
+    globalId = currentGlobalId;
+
+    container.innerHTML = "";
+    render(output, container);
     return;
   }
 
@@ -61,11 +74,16 @@ export function useState(initialState) {
   }
 
   const setState = (newValue) => {
-    const state = componentState.get(parent);
-    if (!state) return;
+    const parentState = componentState.get(parent);
+    if (!parentState) return;
 
-    state.cache[id].value = newValue;
-    console.log("State updated to:", state.cache[id].value);
+    if (typeof newValue === "function") {
+      state.cache[id].value = newValue(state.cache[id].value);
+    } else {
+      state.cache[id].value = newValue;
+    }
+
+    render(parentState.component, parent);
   };
 
   return [state.cache[id].value, setState];
