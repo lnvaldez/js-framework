@@ -2,115 +2,141 @@ let globalId = 0;
 let globalParent;
 const componentState = new Map();
 
+export function useState(initialState) {
+  const id = globalId;
+  const parent = globalParent;
+  globalId++;
+
+  return (() => {
+    const state = componentState.get(parent) || { cache: [] };
+    componentState.set(parent, state);
+
+    if (state.cache[id] == null) {
+      state.cache[id] = {
+        value:
+          typeof initialState === "function" ? initialState() : initialState,
+      };
+    }
+
+    const setState = (stateUpdate) => {
+      const parentState = componentState.get(parent);
+      if (!parentState) return;
+
+      if (typeof stateUpdate === "function") {
+        state.cache[id].value = stateUpdate(state.cache[id].value);
+      } else {
+        state.cache[id].value = stateUpdate;
+      }
+
+      queueMicrotask(() => {
+        const currentGlobalId = globalId;
+        globalId = 0;
+        render(parentState.component, parentState.props, parent);
+        globalId = currentGlobalId;
+      });
+    };
+
+    return [state.cache[id].value, setState];
+  })();
+}
+
+export function render(element, props, parent) {
+  if (!element) return;
+
+  const state = componentState.get(parent) || { cache: [] };
+
+  componentState.set(parent, {
+    ...state,
+    component: element,
+    props: props,
+  });
+
+  globalParent = parent;
+
+  const currentGlobalId = globalId;
+  globalId = 0;
+
+  let output;
+  if (typeof element.type === "function") {
+    output = element.type(element.props);
+  } else {
+    output = element;
+  }
+
+  globalId = currentGlobalId;
+
+  if (output) {
+    parent.innerHTML = "";
+    renderVirtualDOM(output, parent);
+  }
+}
+
 export function createElement(type, props, ...children) {
+  const flatChildren = children.flat().filter((child) => child != null);
   return {
     type,
     props: {
       ...props,
-      children: children.length === 1 ? children[0] : children,
+      children: flatChildren.length === 1 ? flatChildren[0] : flatChildren,
     },
   };
 }
 
-export function render(element, container) {
-  if (typeof element === "string" || typeof element === "number") {
-    container.appendChild(document.createTextNode(element));
+export function renderVirtualDOM(vnode, container) {
+  if (!vnode) return;
+
+  if (typeof vnode === "string" || typeof vnode === "number") {
+    container.appendChild(document.createTextNode(vnode));
     return;
   }
 
-  if (typeof element.type === "function") {
-    const state = componentState.get(container) || { cache: [] };
-    componentState.set(container, {
-      ...state,
-      component: element,
-      props: element.props,
+  if (Array.isArray(vnode)) {
+    vnode.forEach((child) => renderVirtualDOM(child, container));
+    return;
+  }
+
+  const dom = document.createElement(vnode.type);
+
+  if (vnode.props) {
+    Object.entries(vnode.props).forEach(([name, value]) => {
+      if (name === "style" && typeof value === "object") {
+        Object.assign(dom.style, value);
+      } else if (name === "className") {
+        dom.setAttribute("class", value);
+      } else if (name !== "children") {
+        if (name.startsWith("on") && typeof value === "function") {
+          const eventName = name.toLowerCase().substring(2);
+          dom.addEventListener(eventName, value);
+        } else {
+          if (value !== false && value !== null) {
+            dom.setAttribute(name, value);
+          }
+        }
+      }
     });
-    globalParent = container;
-
-    const currentGlobalId = globalId;
-    globalId = 0;
-    const output = element.type(element.props);
-    globalId = currentGlobalId;
-
-    container.innerHTML = "";
-    render(output, container);
-    return;
   }
 
-  const dom = document.createElement(element.type);
-
-  Object.entries(element.props || {}).forEach(([name, value]) => {
-    if (name.startsWith("on")) {
-      const eventName = name.toLowerCase().substring(2);
-      dom.addEventListener(eventName, value);
-    } else if (name !== "children") {
-      dom[name] = value;
-    }
-  });
-
-  if (element.props.children) {
-    if (Array.isArray(element.props.children)) {
-      element.props.children.forEach((child) => render(child, dom));
+  if (vnode.props && vnode.props.children) {
+    if (Array.isArray(vnode.props.children)) {
+      vnode.props.children.forEach((child) => renderVirtualDOM(child, dom));
     } else {
-      render(element.props.children, dom);
+      renderVirtualDOM(vnode.props.children, dom);
     }
   }
 
   container.appendChild(dom);
 }
 
-export function useState(initialState) {
-  const id = globalId;
-  const parent = globalParent;
-  globalId++;
+const store = {
+  state: {},
+  listeners: [],
+  setState(newState) {
+    this.state = { ...this.state, ...newState };
+    this.listeners.forEach((listener) => listener());
+  },
+  subscribe(listener) {
+    this.listeners.push(listener);
+  },
+};
 
-  const state = componentState.get(parent) || { cache: [] };
-  componentState.set(parent, state);
-
-  if (state.cache[id] == null) {
-    state.cache[id] = {
-      value: typeof initialState === "function" ? initialState() : initialState,
-    };
-  }
-
-  const setState = (newValue) => {
-    const parentState = componentState.get(parent);
-    if (!parentState) return;
-
-    if (typeof newValue === "function") {
-      state.cache[id].value = newValue(state.cache[id].value);
-    } else {
-      state.cache[id].value = newValue;
-    }
-
-    render(parentState.component, parent);
-  };
-
-  return [state.cache[id].value, setState];
-}
-
-export function useEffect(callback, dependencies) {
-  const id = globalId;
-  const parent = globalParent;
-  globalId++;
-
-  const state = componentState.get(parent) || { cache: [] };
-  componentState.set(parent, state);
-
-  if (state.cache[id] == null) {
-    state.cache[id] = { dependencies: undefined };
-  }
-
-  const dependenciesChanged =
-    !dependencies ||
-    !state.cache[id].dependencies ||
-    dependencies.some((dep, i) => dep !== state.cache[id].dependencies[i]);
-
-  if (dependenciesChanged) {
-    if (state.cache[id].cleanup) {
-      state.cache[id].cleanup();
-    }
-    state.cache[id].cleanup = callback();
-    state.cache[id].dependencies = dependencies;
-  }
-}
+export default store;
