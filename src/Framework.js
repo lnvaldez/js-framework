@@ -88,3 +88,29 @@ export function useState(initialState) {
 
   return [state.cache[id].value, setState];
 }
+
+export function useEffect(callback, dependencies) {
+  const id = globalId;
+  const parent = globalParent;
+  globalId++;
+
+  const state = componentState.get(parent) || { cache: [] };
+  componentState.set(parent, state);
+
+  if (state.cache[id] == null) {
+    state.cache[id] = { dependencies: undefined };
+  }
+
+  const dependenciesChanged =
+    !dependencies ||
+    !state.cache[id].dependencies ||
+    dependencies.some((dep, i) => dep !== state.cache[id].dependencies[i]);
+
+  if (dependenciesChanged) {
+    if (state.cache[id].cleanup) {
+      state.cache[id].cleanup();
+    }
+    state.cache[id].cleanup = callback();
+    state.cache[id].dependencies = dependencies;
+  }
+}
