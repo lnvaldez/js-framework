@@ -2,7 +2,16 @@ let globalId = 0;
 let globalParent;
 const componentState = new Map();
 
-export function useState(initialState) {}
+export function useState(initialState) {
+  const [state, setState] = [
+    initialState,
+    (newValue) => {
+      console.log("State updated to:", newValue);
+    },
+  ];
+
+  return [state, setState];
+}
 
 export function createElement(type, props, ...children) {
   return {
@@ -15,20 +24,32 @@ export function createElement(type, props, ...children) {
 }
 
 export function render(element, container) {
+  if (typeof element === "string" || typeof element === "number") {
+    container.appendChild(document.createTextNode(element));
+    return;
+  }
+
+  if (typeof element.type === "function") {
+    const component = element.type(element.props);
+    render(component, container);
+    return;
+  }
+
   const dom = document.createElement(element.type);
 
   Object.entries(element.props || {}).forEach(([name, value]) => {
-    if (name !== "children") {
+    if (name.startsWith("on")) {
+      const eventName = name.toLowerCase().substring(2);
+      dom.addEventListener(eventName, value);
+    } else if (name !== "children") {
       dom[name] = value;
     }
   });
 
   if (element.props.children) {
-    if (typeof element.props.children === "string") {
-      dom.textContent = element.props.children;
-    } else if (Array.isArray(element.props.children)) {
+    if (Array.isArray(element.props.children)) {
       element.props.children.forEach((child) => render(child, dom));
-    } else if (element.props.children) {
+    } else {
       render(element.props.children, dom);
     }
   }
