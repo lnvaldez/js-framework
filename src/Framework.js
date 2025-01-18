@@ -1,142 +1,196 @@
-let globalId = 0;
-let globalParent;
-const componentState = new Map();
+class Component {
+  constructor(props) {
+    this.props = props || {};
+    this.state = {};
+    this._renderCallback = null;
+  }
 
-export function useState(initialState) {
-  const id = globalId;
-  const parent = globalParent;
-  globalId++;
-
-  return (() => {
-    const state = componentState.get(parent) || { cache: [] };
-    componentState.set(parent, state);
-
-    if (state.cache[id] == null) {
-      state.cache[id] = {
-        value:
-          typeof initialState === "function" ? initialState() : initialState,
-      };
+  setState(newState) {
+    this.state = { ...this.state, ...newState };
+    if (this._renderCallback) {
+      this._renderCallback();
     }
+  }
 
-    const setState = (stateUpdate) => {
-      const parentState = componentState.get(parent);
-      if (!parentState) return;
+  componentDidMount() {}
+  componentDidUpdate() {}
 
-      if (typeof stateUpdate === "function") {
-        state.cache[id].value = stateUpdate(state.cache[id].value);
-      } else {
-        state.cache[id].value = stateUpdate;
-      }
-
-      queueMicrotask(() => {
-        const currentGlobalId = globalId;
-        globalId = 0;
-        render(parentState.component, parentState.props, parent);
-        globalId = currentGlobalId;
-      });
-    };
-
-    return [state.cache[id].value, setState];
-  })();
+  render() {
+    return null;
+  }
 }
 
-export function render(element, props, parent) {
-  if (!element) return;
+function createElement(type, props, ...children) {
+  return { type, props: { ...props, children: children.flat() } };
+}
 
-  const state = componentState.get(parent) || { cache: [] };
+function createDom(vNode) {
+  if (typeof vNode === "string" || typeof vNode === "number") {
+    return document.createTextNode(vNode);
+  }
 
-  componentState.set(parent, {
-    ...state,
-    component: element,
-    props: props,
+  if (vNode === null || vNode === undefined) {
+    return document.createTextNode("");
+  }
+
+  if (typeof vNode.type === "function") {
+    const component = new vNode.type(vNode.props);
+    const renderedVNode = component.render();
+    const dom = createDom(renderedVNode);
+    component._renderCallback = () => {
+      const newVNode = component.render();
+      updateDom(dom, renderedVNode, newVNode);
+    };
+    component.componentDidMount();
+    return dom;
+  }
+
+  const dom = document.createElement(vNode.type);
+
+  const props = vNode.props || {};
+  Object.entries(props).forEach(([key, value]) => {
+    if (key === "children") {
+      return;
+    } else if (key.startsWith("on") && typeof value === "function") {
+      const eventName = key.toLowerCase().substring(2);
+      dom.addEventListener(eventName, value);
+    } else if (key === "className") {
+      dom.setAttribute("class", value);
+    } else if (key === "style") {
+      if (typeof value === "string") {
+        dom.setAttribute("style", value);
+      } else if (typeof value === "object") {
+        Object.entries(value).forEach(([cssKey, cssValue]) => {
+          dom.style[cssKey] = cssValue;
+        });
+      }
+    } else {
+      dom.setAttribute(key, value);
+    }
   });
 
-  globalParent = parent;
-
-  const currentGlobalId = globalId;
-  globalId = 0;
-
-  let output;
-  if (typeof element.type === "function") {
-    output = element.type(element.props);
-  } else {
-    output = element;
-  }
-
-  globalId = currentGlobalId;
-
-  if (output) {
-    parent.innerHTML = "";
-    renderVirtualDOM(output, parent);
-  }
-}
-
-export function createElement(type, props, ...children) {
-  const flatChildren = children.flat().filter((child) => child != null);
-  return {
-    type,
-    props: {
-      ...props,
-      children: flatChildren.length === 1 ? flatChildren[0] : flatChildren,
-    },
-  };
-}
-
-export function renderVirtualDOM(vnode, container) {
-  if (!vnode) return;
-
-  if (typeof vnode === "string" || typeof vnode === "number") {
-    container.appendChild(document.createTextNode(vnode));
-    return;
-  }
-
-  if (Array.isArray(vnode)) {
-    vnode.forEach((child) => renderVirtualDOM(child, container));
-    return;
-  }
-
-  const dom = document.createElement(vnode.type);
-
-  if (vnode.props) {
-    Object.entries(vnode.props).forEach(([name, value]) => {
-      if (name === "style" && typeof value === "object") {
-        Object.assign(dom.style, value);
-      } else if (name === "className") {
-        dom.setAttribute("class", value);
-      } else if (name !== "children") {
-        if (name.startsWith("on") && typeof value === "function") {
-          const eventName = name.toLowerCase().substring(2);
-          dom.addEventListener(eventName, value);
-        } else {
-          if (value !== false && value !== null) {
-            dom.setAttribute(name, value);
-          }
-        }
+  if (props.children) {
+    props.children.forEach((child) => {
+      const childDom = createDom(child);
+      if (childDom) {
+        dom.appendChild(childDom);
       }
     });
   }
 
-  if (vnode.props && vnode.props.children) {
-    if (Array.isArray(vnode.props.children)) {
-      vnode.props.children.forEach((child) => renderVirtualDOM(child, dom));
-    } else {
-      renderVirtualDOM(vnode.props.children, dom);
-    }
-  }
-
-  container.appendChild(dom);
+  return dom;
 }
 
-const store = {
-  state: {},
-  listeners: [],
-  setState(newState) {
-    this.state = { ...this.state, ...newState };
-    this.listeners.forEach((listener) => listener());
-  },
-  subscribe(listener) {
-    this.listeners.push(listener);
-  },
+function updateDom(dom, oldVNode, newVNode) {
+  if (oldVNode === newVNode) return;
+
+  if (typeof newVNode === "string" || typeof newVNode === "number") {
+    if (oldVNode !== newVNode) {
+      dom.textContent = newVNode;
+    }
+    return;
+  }
+
+  if (typeof newVNode.type === "function") {
+    const component = new newVNode.type(newVNode.props);
+    const newRenderedVNode = component.render();
+    updateDom(dom, oldVNode, newRenderedVNode);
+    component.componentDidUpdate();
+    return;
+  }
+
+  const newProps = newVNode.props || {};
+  const oldProps = oldVNode.props || {};
+
+  Object.entries(newProps).forEach(([key, value]) => {
+    if (key === "children") return;
+    if (key.startsWith("on") && typeof value === "function") {
+      const eventName = key.toLowerCase().substring(2);
+      dom.addEventListener(eventName, value);
+    } else if (key === "className") {
+      dom.setAttribute("class", value);
+    } else if (key === "style") {
+      if (typeof value === "string") {
+        dom.setAttribute("style", value);
+      } else if (typeof value === "object") {
+        Object.entries(value).forEach(([cssKey, cssValue]) => {
+          dom.style[cssKey] = cssValue;
+        });
+      }
+    } else {
+      dom.setAttribute(key, value);
+    }
+  });
+
+  Object.keys(oldProps).forEach((key) => {
+    if (!(key in newProps)) {
+      dom.removeAttribute(key);
+    }
+  });
+
+  const newChildren = newProps.children || [];
+  const oldChildren = oldProps.children || [];
+
+  const maxLength = Math.max(newChildren.length, oldChildren.length);
+  for (let i = 0; i < maxLength; i++) {
+    if (i >= newChildren.length) {
+      dom.removeChild(dom.childNodes[i]);
+    } else if (i >= oldChildren.length) {
+      dom.appendChild(createDom(newChildren[i]));
+    } else {
+      updateDom(dom.childNodes[i], oldChildren[i], newChildren[i]);
+    }
+  }
+}
+
+function diff(vNode, container, oldDom) {
+  const newDom = createDom(vNode);
+  if (oldDom) {
+    container.replaceChild(newDom, oldDom);
+  } else {
+    container.appendChild(newDom);
+  }
+  return newDom;
+}
+
+function renderWithVDOM(vNode, container) {
+  const oldDom = container.firstChild;
+  const newDom = diff(vNode, container, oldDom);
+  container.appendChild(newDom);
+}
+
+function createStore(reducer) {
+  let state = reducer(undefined, { type: "__INIT__" });
+  const listeners = [];
+
+  function dispatch(action) {
+    state = reducer(state, action);
+    listeners.forEach((listener) => listener());
+  }
+
+  function subscribe(listener) {
+    listeners.push(listener);
+    return () => {
+      const index = listeners.indexOf(listener);
+      if (index > -1) {
+        listeners.splice(index, 1);
+      }
+    };
+  }
+
+  function getState() {
+    return state;
+  }
+
+  return { dispatch, subscribe, getState };
+}
+
+const Framework = {
+  createElement,
+  render: renderWithVDOM,
+  createStore,
+  jsx: createElement,
+  Component,
 };
 
-export default store;
+export default Framework;
