@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a lightweight JavaScript framework designed to be easily integrated into any project. It provides a simple component-based architecture and a virtual DOM for efficient rendering.
+Lightweight JavaScript framework designed to be easily integrated into any project. It provides a simple component-based architecture and a virtual DOM for efficient rendering.
 
 ## Getting Started
 
