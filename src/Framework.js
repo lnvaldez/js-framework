@@ -82,7 +82,18 @@ function createDom(vNode) {
 }
 
 function updateDom(dom, oldVNode, newVNode) {
-  if (oldVNode === newVNode) return;
+  if (!oldVNode && !newVNode) return;
+
+  if (!newVNode) {
+    dom.remove();
+    return;
+  }
+
+  if (!oldVNode) {
+    const newDom = createDom(newVNode);
+    dom.parentNode.replaceChild(newDom, dom);
+    return;
+  }
 
   if (typeof newVNode === "string" || typeof newVNode === "number") {
     if (oldVNode !== newVNode) {
@@ -155,8 +166,7 @@ function diff(vNode, container, oldDom) {
 
 function renderWithVDOM(vNode, container) {
   const oldDom = container.firstChild;
-  const newDom = diff(vNode, container, oldDom);
-  container.appendChild(newDom);
+  diff(vNode, container, oldDom);
 }
 
 function createStore(reducer) {
