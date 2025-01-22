@@ -295,3 +295,11 @@ function createStore(reducer) {
   return { dispatch, subscribe, getState };
 }
 ```
+
+**Purpose**: Implements state management system
+
+- Input: reducer function
+- Returns: Store object with:
+  - `dispatch`: Triggers state updates
+  - `subscribe`: Adds state change listeners
+  - `getState`: Retrieves current state
