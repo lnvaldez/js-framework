@@ -1,5 +1,7 @@
 # JS Framework Project
 
+[Technical Documentation](https://github.com/lnvaldez/js-framework/blob/main/docs/documentation.md)
+
 ## Overview
 
 Lightweight JavaScript framework designed to be easily integrated into any project. It provides a simple component-based architecture and a virtual DOM for efficient rendering.
@@ -50,3 +52,5 @@ npm run build:babel
 This will transpile the source code in the src directory and output it to the dist directory.
 
 ## Usage
+
+[To Do App](https://github.com/lnvaldez/js-framework-todo)
